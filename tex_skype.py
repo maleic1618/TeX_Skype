@@ -7,6 +7,7 @@ import re
 import time
 import os
 from PyQt4 import QtGui, QtCore, QtWebKit
+
 from xml.sax.saxutils import *
 from urllib import urlopen
 
@@ -14,23 +15,30 @@ class MainWindow(QtGui.QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.html = ''
+        self.last_msg=''
         self.image_count = 0
         self.initUI()
         self.skype = Skype4Py.Skype()
-        self.skype.OnMessageStatus = self.handler
-        #self.skype.Attach()
-        self.skype_thread = MyThread(self.skype)
-        self.skype_thread.start()
+        self.skype.OnMessageStatus = self.emit_trigger
+        self.skype.Attach()
+        """self.skype_thread = MyThread(self.skype)
+        self.skype_thread.start()"""
         speaking_to_id = raw_input(u'Skype id whose you are speaking to:')
         self.chat = self.skype.CreateChatWith(speaking_to_id)
         self.show()
 
+    on_message_trigger = QtCore.pyqtSignal(object, object)
+
+    def emit_trigger(self, message, event):
+        self.on_message_trigger.connect(self.handler)
+        self.on_message_trigger.emit(message, event)
+
     def initUI(self):
         self.display_text = QtGui.QTextBrowser()
         self.input_text   = InputText(self)
-        self.tex_text     = QtGui.QTextEdit()
-        self.tex_image    = QtGui.QLabel()
-        self.tex_widget   = QtGui.QWidget()
+        self.tex_text     = QtGui.QTextEdit() #未使用
+        self.tex_image    = QtGui.QLabel()    #未使用
+        self.tex_widget   = QtGui.QWidget()   #未使用
 
         self.input_text.setFixedHeight(80)
         self.tex_widget.setFixedHeight(100)
@@ -54,13 +62,17 @@ class MainWindow(QtGui.QWidget):
         self.display_text.setHtml(self.html)
         self.input_text.setFocus()
 
+    @QtCore.pyqtSlot(object, object)
     def handler(self, message, event):
         if event == u'RECEIVED':
             print 'RECEIVED'
+            if message.Body == self.last_msg:
+                return
+            self.last_msg = message.Body #なぜか複数回呼び出されるのでここで止めておく
             text = self.tex_replace(message.Body)
-            print '!'
             self.html = self.html + unicode(message.FromDisplayName) + u':' + text +  u'<br>'
             self.display_text.setHtml(unicode(self.html))
+            print self.html
 
         #self.moveToThread(QtGui.QApplication.instance().thread())
 
@@ -71,15 +83,13 @@ class MainWindow(QtGui.QWidget):
         img_path = [self.tex_image_download(tex) for tex in tex_code]
 
         for tex, path in zip(tex_code, img_path):
-            print tex, path
             text = text.replace('$'+tex+'$', url%path)
         
         return text
 
     def tex_image_download(self, tex):
-        base_url = 'http://chart.apis.google.com/chart'
-        url_ext = 'cht=tx&chl=' + tex
-        opener = urlopen(base_url, url_ext.encode('utf-8'))
+        base_url = 'http://www.codecogs.com/gif.latex?'+tex
+        opener = urlopen(base_url)
         img = opener.read()
 
         img_path = os.path.normpath(os.path.join(base_path, './tex-img/'+str(self.image_count)+'.png'))
